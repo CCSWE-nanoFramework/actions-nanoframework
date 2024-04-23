@@ -3,21 +3,29 @@ name: Test loop
 on: 
   workflow_dispatch:
 
+defaults:
+  run:
+    shell: pwsh    
+
 jobs:
   test_loop:
     name: Test loop
     timeout-minutes: 15
     runs-on: windows-latest
+    env:
+      BUILD_CONFIGURATION: 'Release'
 
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-
-      - name: Test loop
+      
+      - name: Test loop 2
         run: |
-          for %%f in (*.nuspec) do (
-            echo [1] %%f
-            echo [2] %%f
-          )
+          $nuspecFiles = Get-ChildItem -Filter *.nuspec
+          foreach ($nuspecFile in $nuspecFiles) {
+            echo [1] $nuspecFile.FullName - $nuspecFile.Name
+            echo [2] $nuspecFile.FullName - $nuspecFile.Name
+            echo [3] ${{ env.BUILD_CONFIGURATION }}
+          }
