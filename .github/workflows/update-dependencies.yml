@@ -1,0 +1,26 @@
+# Copyright (c) .NET Foundation and Contributors
+# See LICENSE file in the project root for full license information.
+
+# This workflow will periodically check .NET nanoFramework dependencies and updates them in the repository it's running.
+
+name: Update dependencies
+
+on:
+  workflow_call:
+    inputs:
+      branchToPr:
+        required: false
+        type: string   
+        default: 'master'   
+      solution:
+        required: true
+        type: string
+
+jobs:
+  update-dependencies:
+    name: nanoFramework
+    uses: nanoframework/nf-tools/.github/workflows/update-dependencies.yml@main
+    secrets: inherit
+    with:
+      solutionsToCheck: ${{ inputs.solution }}
+      branchToPr: ${{ inputs.branchToPr }}

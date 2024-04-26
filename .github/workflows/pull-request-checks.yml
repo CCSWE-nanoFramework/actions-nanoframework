@@ -1,0 +1,21 @@
+name: Pull Request
+
+on:
+  workflow_call:
+    inputs:
+      solution:
+        required: true
+        type: string
+
+jobs:
+  check_package_lock:
+    name: nanoFramework
+    uses: nanoframework/nf-tools/.github/workflows/check-package-lock.yml@main
+    with:
+      solution: ${{ inputs.solution }}
+  check_nuget_latest:
+    name: nanoFramework
+    uses: nanoframework/nf-tools/.github/workflows/check-packages-updated.yml@main
+    secrets: inherit
+    with:
+      solution: ${{ inputs.solution }}

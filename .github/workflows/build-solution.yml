@@ -1,0 +1,67 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      solution:
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build:
+    name: Build solution
+    timeout-minutes: 15
+    runs-on: windows-latest
+    env:
+      BUILD_CONFIGURATION: 'Release'
+      GITHUB_TOKEN: ${{ github.token }}
+      SOLUTION: ${{ inputs.solution }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup nanoFramework
+        uses: nanoframework/nanobuild@v1
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: x64
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+
+      - name: Setup Nerdbank.GitVersioning
+        uses: dotnet/nbgv@v0.4.2
+        with:
+          setAllVars: true
+
+      - name: Install dependencies
+        run: nuget restore ${{ env.SOLUTION }}
+
+      - name: Build solution
+        run: msbuild ${{ env.SOLUTION }} /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:AssemblyVersion=${{ env.NBGV_AssemblyVersion }} /p:FileVersion=${{ env.NBGV_AssemblyFileVersion }} /p:InformationalVersion=${{ env.NBGV_AssemblyInformationalVersion }}
+
+      # TODO: Add tests
+
+      - name: Build NuGet packages
+        run: |
+          $files = Get-ChildItem -Filter *.nuspec
+          foreach ($file in $files) {
+            nuget pack $file.Name -Version ${{ env.NBGV_NuGetPackageVersion }} -Symbols -SymbolPackageFormat snupkg -properties Configuration=${{ env.BUILD_CONFIGURATION }}
+          }
+
+      - name: Publish NuGet packages
+        if: startsWith(github.ref, 'refs/heads/master')
+        run: |
+          $files = Get-ChildItem -Filter *.nupkg
+          foreach ($file in $files) {
+            nuget push $file.Name -Source 'https://api.nuget.org/v3/index.json' -ApiKey ${{ secrets.NUGET_ORG_API_KEY }} -SkipDuplicate
+          }
