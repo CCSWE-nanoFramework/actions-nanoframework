@@ -27,6 +27,8 @@ jobs:
 
       - name: Setup nanoFramework
         uses: nanoframework/nanobuild@v1
+        with:
+          gitHubAuth: ${{ github.token }}
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
