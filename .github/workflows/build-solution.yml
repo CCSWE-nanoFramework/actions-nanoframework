@@ -6,7 +6,7 @@ on:
         type: string
       runUnitTests:
         required: true
-        default: false
+        default: true
         type: boolean
 
 defaults:
