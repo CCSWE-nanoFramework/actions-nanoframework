@@ -54,7 +54,7 @@ jobs:
 
       - name: Run unit tests
         if: inputs.runUnitTests == true
-        uses: CCSWE-nanoFramework/nanotest@master
+        uses: CCSWE-nanoFramework/vstest-nanoframework@v1
 
       - name: Build NuGet packages
         run: |
