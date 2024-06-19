@@ -7,9 +7,6 @@ on:
       runUnitTests:
         default: true
         type: boolean
-    secrets:
-      GITHUB_TOKEN:
-        required: true
 
 defaults:
   run:
