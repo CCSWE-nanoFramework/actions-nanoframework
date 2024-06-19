@@ -19,6 +19,7 @@ jobs:
     runs-on: windows-latest
     env:
       BUILD_CONFIGURATION: 'Release'
+      GITHUB_AUTH_TOKEN: ${{ github.token }}
       GITHUB_TOKEN: ${{ github.token }}
       SOLUTION: ${{ inputs.solution }}
 
@@ -30,8 +31,6 @@ jobs:
 
       - name: Setup nanoFramework
         uses: nanoframework/nanobuild@v1
-        env:
-          GITHUB_AUTH_TOKEN: ${{ github.token }}
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
