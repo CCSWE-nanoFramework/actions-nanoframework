@@ -57,7 +57,7 @@ jobs:
 
       - name: Build NuGet packages
         run: |
-          $files = Get-ChildItem -Filter *.nuspec -Recurse
+          $files = Get-ChildItem -Filter *.nuspec -Recurse | Where-Object Fullname -NotMatch "packages"
           foreach ($file in $files) {
             nuget pack $file.FullName -Version ${{ env.NBGV_NuGetPackageVersion }} -Symbols -SymbolPackageFormat snupkg -properties Configuration=${{ env.BUILD_CONFIGURATION }}
           }
@@ -65,7 +65,7 @@ jobs:
       - name: Publish NuGet packages
         if: startsWith(github.ref, 'refs/heads/master')
         run: |
-          $files = Get-ChildItem -Filter *.nupkg -Recurse
+          $files = Get-ChildItem -Filter *.nupkg -Recurse | Where-Object Fullname -NotMatch "packages"
           foreach ($file in $files) {
             nuget push $file.FullName -Source 'https://api.nuget.org/v3/index.json' -ApiKey ${{ secrets.NUGET_ORG_API_KEY }} -SkipDuplicate
           }
