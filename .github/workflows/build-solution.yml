@@ -4,6 +4,9 @@ on:
       solution:
         required: true
         type: string
+      publishNuGet:
+        default: true
+        type: boolean        
       runUnitTests:
         default: true
         type: boolean
@@ -56,6 +59,7 @@ jobs:
         uses: CCSWE-nanoFramework/vstest-nanoframework@v1
 
       - name: Build NuGet packages
+        if: inputs.publishNuGet == true
         run: |
           $files = Get-ChildItem -Filter *.nuspec -Recurse | Where-Object Fullname -NotMatch "packages"
           foreach ($file in $files) {
@@ -63,7 +67,7 @@ jobs:
           }
 
       - name: Publish NuGet packages
-        if: startsWith(github.ref, 'refs/heads/master')
+        if: inputs.publishNuGet == true && startsWith(github.ref, 'refs/heads/master')
         run: |
           $files = Get-ChildItem -Filter *.nupkg -Recurse | Where-Object Fullname -NotMatch "packages"
           foreach ($file in $files) {
