@@ -19,7 +19,7 @@ jobs:
   build:
     name: nanoFramework
     timeout-minutes: 15
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       BUILD_CONFIGURATION: 'Release'
       GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -28,23 +28,23 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Setup nanoFramework
-        uses: nanoframework/nanobuild@v1
+        uses: nanoframework/nanobuild@v1.18
 
       - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
+        uses: microsoft/setup-msbuild@v3
         with:
           msbuild-architecture: x64
 
       - name: Setup NuGet
-        uses: nuget/setup-nuget@v2
+        uses: nuget/setup-nuget@v3
 
       - name: Setup Nerdbank.GitVersioning
-        uses: dotnet/nbgv@v0.4.2
+        uses: dotnet/nbgv@v0.5.1
         with:
           setAllVars: true
 
@@ -56,7 +56,7 @@ jobs:
 
       - name: Run unit tests
         if: inputs.runUnitTests == true
-        uses: CCSWE-nanoFramework/vstest-nanoframework@v1
+        uses: CCSWE-nanoFramework/vstest-nanoframework@v1.0.10
 
       - name: Build NuGet packages
         if: inputs.publishNuGet == true
