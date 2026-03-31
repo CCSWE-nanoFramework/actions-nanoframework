@@ -33,7 +33,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup nanoFramework
-        uses: nanoframework/nanobuild@v1
+        uses: nanoframework/nanobuild@v1.18
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
@@ -56,7 +56,7 @@ jobs:
 
       - name: Run unit tests
         if: inputs.runUnitTests == true
-        uses: CCSWE-nanoFramework/vstest-nanoframework@v1
+        uses: CCSWE-nanoFramework/vstest-nanoframework@v1.0.10
 
       - name: Build NuGet packages
         if: inputs.publishNuGet == true
