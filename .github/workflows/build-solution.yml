@@ -19,7 +19,7 @@ jobs:
   build:
     name: nanoFramework
     timeout-minutes: 15
-    runs-on: windows-2022
+    runs-on: windows-latest
     env:
       BUILD_CONFIGURATION: 'Release'
       GITHUB_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -33,7 +33,12 @@ jobs:
           fetch-depth: 0
 
       - name: Setup nanoFramework
-        uses: nanoframework/nanobuild@v1.18
+        uses: nanoframework/nanobuild@v1
+        with:
+          usePreview: false
+
+      - name: Update nanoclr
+        run: dotnet tool update -g nanoclr
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v3
@@ -56,7 +61,7 @@ jobs:
 
       - name: Run unit tests
         if: inputs.runUnitTests == true
-        uses: CCSWE-nanoFramework/vstest-nanoframework@v1.0.10
+        uses: CCSWE-nanoFramework/vstest-nanoframework@v1
 
       - name: Build NuGet packages
         if: inputs.publishNuGet == true
