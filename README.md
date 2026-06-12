@@ -1,6 +1,43 @@
 # actions-nanoframework
 
-Reusable GitHub Actions workflows for building, testing, and publishing .NET nanoFramework libraries.
+Reusable GitHub Actions workflows and composite actions for building, testing, and publishing .NET nanoFramework libraries.
+
+## Composite actions
+
+Shared building blocks used by `build-solution.yml` and by other repositories (e.g. `vstest-nanoframework`'s CI). Reference them at `@master`.
+
+### `setup-nanoframework`
+
+Installs the nanoFramework build components, `nanoclr`, MSBuild, and NuGet. This is the single place the `nanoframework/nanobuild` version is pinned. The GitHub token is sourced automatically, so callers do not pass it.
+
+```yaml
+- uses: CCSWE-nanoFramework/actions-nanoframework/setup-nanoframework@master
+```
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `usePreview` | no | `false` | Install preview versions of the build components |
+
+### `build-nanoframework`
+
+Restores and builds a nanoFramework solution, optionally applying [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) versions.
+
+```yaml
+- uses: CCSWE-nanoFramework/actions-nanoframework/build-nanoframework@master
+  with:
+    solution: MySolution.sln
+    useGitVersioning: true
+```
+
+| Input | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `solution` | yes | | Path to the `.sln` file |
+| `configuration` | no | `Release` | Build configuration |
+| `useGitVersioning` | no | `false` | Run Nerdbank.GitVersioning and apply version properties to the build |
+
+When `useGitVersioning` is `true`, the `NBGV_*` variables it exports remain available to later steps in the same job (e.g. the NuGet packaging step in `build-solution.yml`).
+
+---
 
 ## Workflows
 
