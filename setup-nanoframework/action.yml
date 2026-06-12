@@ -11,9 +11,7 @@ runs:
   using: 'composite'
   steps:
     - name: Setup nanoFramework
-      # Pinned to the merge commit of nanoframework/nanobuild#4 (VS2026 support)
-      # until a tagged release is available; revert to @v1 once released.
-      uses: nanoframework/nanobuild@7c31aa93121b2f6fc97b3ce74655cc48b2c2c505
+      uses: nanoframework/nanobuild@v1
       with:
         usePreview: ${{ inputs.usePreview }}
         gitHubAuth: ${{ github.token }}
