@@ -20,6 +20,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   pipeline:
@@ -27,8 +28,12 @@ jobs:
     with:
       solution: MySolution.sln
       publish-nuget: true
+      dependents: |
+        CoryCharlton/Emily.Clock
     secrets:
       NUGET_ORG_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+      AUTOMATION_APP_ID: ${{ secrets.AUTOMATION_APP_ID }}
+      AUTOMATION_APP_KEY: ${{ secrets.AUTOMATION_APP_KEY }}
 ```
 
 | Job | Runs | Does |
@@ -36,20 +41,24 @@ jobs:
 | `build` | always | Locked restore (when `packages.lock.json` files are tracked), Release build, unit tests via [vstest-nanoframework](https://github.com/CCSWE-nanoFramework/vstest-nanoframework), and with `publish-nuget` packs every tracked `*.nuspec` |
 | `package-lock` | PRs | Every `.nfproj` in the solution has a `packages.lock.json` |
 | `packages-updated` | PRs | `nuget update` leaves the tree unchanged |
-| `publish` | push to the default branch with `publish-nuget` | Pushes the packages to nuget.org |
+| `publish` | push to the default branch with `publish-nuget` | Pushes the packages to nuget.org; with `dependents`, waits (up to 30 min) until nuget.org lists them |
+| `dispatch` | after `publish` | Sends `repository_dispatch: update-dependencies` to each dependent |
+| `dependabot-merge` | Dependabot PRs | Enables auto-merge for non-major updates |
+| `update-behind` | push to the default branch | Updates Dependabot and andy-the-messenger-robot PRs that auto-merge left behind |
 
 | Input | Default | Description |
 |-------|---------|-------------|
 | `solution` | | Path to the `.sln` file |
 | `publish-nuget` | `false` | Pack and publish NuGet packages |
+| `dependents` | | Repos (`owner/name`, one per line) whose dependency update runs after a publish |
 
-Secrets: `NUGET_ORG_API_KEY` (only for `publish`). Versions come from [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) when the repo has a `version.json`. Publishing requires one.
+Secrets: `NUGET_ORG_API_KEY` (`publish`) and `AUTOMATION_APP_ID`/`AUTOMATION_APP_KEY` (`dispatch`, `dependabot-merge`, `update-behind`; Dependabot-triggered runs read the Dependabot secrets). The caller's `permissions` must include `pull-requests: read`. Versions come from [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) when the repo has a `version.json`. Publishing requires one.
 
 Checks render as `pipeline / build`, `pipeline / package-lock`, `pipeline / packages-updated` and `pipeline / publish`.
 
 ### `nanoframework-update-dependencies.yml`
 
-Updates nanoFramework NuGet packages with [nanodu](https://github.com/nanoframework/nanodu) and opens a PR as the `andy-the-messenger-robot` App, so the PR triggers checks. It then closes older update PRs as superseded.
+Updates nanoFramework NuGet packages with [nanodu](https://github.com/nanoframework/nanodu) and opens a PR as the `andy-the-messenger-robot` App, so the PR triggers checks. It then closes older update PRs as superseded and enables auto-merge on the new one, unless it bumps a package's major version. Callers listen for `repository_dispatch: update-dependencies` so a library publish can trigger them.
 
 ```yaml
 name: Update dependencies

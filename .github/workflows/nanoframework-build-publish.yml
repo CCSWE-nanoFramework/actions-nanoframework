@@ -6,7 +6,11 @@ name: nanoframework-build-publish
 #                     pack tracked *.nuspec files when publish-nuget is set
 #   package-lock      PR only: every .nfproj in the solution has a packages.lock.json
 #   packages-updated  PR only: `nuget update` leaves the tree unchanged
-#   publish           push to the default branch with publish-nuget: push packages to nuget.org
+#   publish           push to the default branch with publish-nuget: push packages to nuget.org,
+#                     then wait until nuget.org serves them when there are dependents
+#   dispatch          send `update-dependencies` to each dependent repo once published
+#   dependabot-merge  auto-merge non-major Dependabot PRs (andy-the-messenger-robot App)
+#   update-behind     on default-branch pushes, update bot PRs that auto-merge left behind
 #
 # Caller:
 #
@@ -14,7 +18,10 @@ name: nanoframework-build-publish
 #     pipeline:
 #       uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/nanoframework-build-publish.yml@master
 #       with: { solution: <path to .sln> }
-#       secrets: { NUGET_ORG_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }} }
+#       secrets:
+#         NUGET_ORG_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+#         AUTOMATION_APP_ID: ${{ secrets.AUTOMATION_APP_ID }}
+#         AUTOMATION_APP_KEY: ${{ secrets.AUTOMATION_APP_KEY }}
 
 on:
   workflow_call:
@@ -25,8 +32,16 @@ on:
       publish-nuget:
         type: boolean
         default: false
+      dependents:
+        description: Repos (owner/name, one per line) to send update-dependencies to after publishing
+        type: string
+        default: ''
     secrets:
       NUGET_ORG_API_KEY:
+        required: false
+      AUTOMATION_APP_ID:
+        required: false
+      AUTOMATION_APP_KEY:
         required: false
 
 jobs:
@@ -35,6 +50,8 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -48,6 +65,11 @@ jobs:
 
       - name: Run unit tests
         uses: CCSWE-nanoFramework/vstest-nanoframework@v2
+
+      - name: Expose version
+        id: version
+        shell: bash
+        run: echo "version=${NBGV_NuGetPackageVersion:-}" >> "$GITHUB_OUTPUT"
 
       - name: Pack NuGet packages
         if: inputs.publish-nuget
@@ -139,9 +161,12 @@ jobs:
     needs: build
     if: inputs.publish-nuget && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      dependents: ${{ steps.dependents.outputs.json }}
+      indexed: ${{ steps.indexed.outputs.indexed }}
     steps:
       - uses: actions/download-artifact@v8
         with:
@@ -166,3 +191,131 @@ jobs:
             dotnet nuget push "$package" --api-key "$NUGET_API_KEY" \
               --source https://api.nuget.org/v3/index.json --skip-duplicate
           done
+
+      - name: Parse dependents
+        id: dependents
+        env:
+          DEPENDENTS: ${{ inputs.dependents }}
+        run: |
+          json="$(printf '%s\n' "$DEPENDENTS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | { grep -v '^$' || true; } | jq -R . | jq -sc .)"
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+
+      # nanodu resolves "latest" through the registration API, which lags the
+      # push; dispatching before every package shows up there misses updates.
+      - name: Wait for nuget.org to list the packages
+        id: indexed
+        if: steps.dependents.outputs.json != '[]'
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          shopt -s nullglob
+          ids=()
+          for package in nuget-packages/*.nupkg; do
+            name="$(basename "$package")"
+            ids+=("${name%".$VERSION.nupkg"}")
+          done
+          deadline=$((SECONDS + 30 * 60))
+          for id in "${ids[@]}"; do
+            lower="${id,,}"
+            until curl -sf --compressed "https://api.nuget.org/v3/registration5-gz-semver2/${lower}/index.json" |
+              jq -e --arg v "$VERSION" '[.items[] | (.upper, (.items[]?.catalogEntry.version))] | index($v)' > /dev/null; do
+              if [ $SECONDS -ge $deadline ]; then
+                echo "::warning::${id} ${VERSION} not listed after 30 minutes; skipping dispatch (dependents' schedules will pick it up)"
+                echo "indexed=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              sleep 30
+            done
+            echo "${id} ${VERSION} listed"
+          done
+          echo "indexed=true" >> "$GITHUB_OUTPUT"
+
+  dispatch:
+    needs: publish
+    if: needs.publish.outputs.indexed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        repository: ${{ fromJSON(needs.publish.outputs.dependents) }}
+    steps:
+      - name: Split repository
+        id: repo
+        env:
+          REPOSITORY: ${{ matrix.repository }}
+        run: |
+          echo "owner=${REPOSITORY%%/*}" >> "$GITHUB_OUTPUT"
+          echo "name=${REPOSITORY#*/}" >> "$GITHUB_OUTPUT"
+
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_KEY }}
+          owner: ${{ steps.repo.outputs.owner }}
+          repositories: ${{ steps.repo.outputs.name }}
+          permission-contents: write
+
+      - name: Send update-dependencies
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPOSITORY: ${{ matrix.repository }}
+        run: gh api "repos/${REPOSITORY}/dispatches" -f event_type=update-dependencies
+
+  dependabot-merge:
+    needs: build
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          # Branch updates by the merge step re-sign commits; the job already requires a dependabot[bot] PR.
+          skip-commit-verification: true
+
+      - id: app-token
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_KEY }}
+
+      # Auto-merge waits for every required check. A branch behind base (strict checks) is updated; the re-run CI comes back here.
+      - if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr merge "$PR_URL" --squash --auto
+          if [ "$(gh pr view "$PR_URL" --json state,mergeStateStatus -q '.state + .mergeStateStatus')" = OPENBEHIND ]; then
+            gh pr update-branch "$PR_URL"
+          fi
+
+  update-behind:
+    if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_KEY }}
+
+      # A merge leaves other auto-merge bot PRs behind base; update them so CI re-runs and they merge.
+      - env:
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh pr list -R "$REPO" --state open --json number,author,mergeStateStatus,autoMergeRequest \
+            -q '.[] | select(.autoMergeRequest != null and .mergeStateStatus == "BEHIND" and
+              (.author.login == "app/dependabot" or .author.login == "app/andy-the-messenger-robot")) | .number' |
+            while read -r n; do gh pr update-branch "$n" -R "$REPO"; done
