@@ -1,0 +1,168 @@
+name: nanoframework-build-publish
+
+# Reusable workflow for nanoFramework repos.
+#
+#   build             locked restore, Release build, unit tests (vstest-nanoframework),
+#                     pack tracked *.nuspec files when publish-nuget is set
+#   package-lock      PR only: every .nfproj in the solution has a packages.lock.json
+#   packages-updated  PR only: `nuget update` leaves the tree unchanged
+#   publish           push to the default branch with publish-nuget: push packages to nuget.org
+#
+# Caller:
+#
+#   jobs:
+#     pipeline:
+#       uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/nanoframework-build-publish.yml@master
+#       with: { solution: <path to .sln> }
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      solution:
+        type: string
+        required: true
+      publish-nuget:
+        type: boolean
+        default: false
+    secrets:
+      NUGET_ORG_API_KEY:
+        required: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: CCSWE-nanoFramework/actions-nanoframework/.github/actions/setup-nanoframework@master
+
+      - uses: CCSWE-nanoFramework/actions-nanoframework/.github/actions/build-nanoframework@master
+        with:
+          solution: ${{ inputs.solution }}
+
+      - name: Run unit tests
+        uses: CCSWE-nanoFramework/vstest-nanoframework@v2
+
+      - name: Pack NuGet packages
+        if: inputs.publish-nuget
+        shell: bash
+        run: |
+          if [ -z "${NBGV_NuGetPackageVersion:-}" ]; then
+            echo "::error::publish-nuget requires Nerdbank.GitVersioning (version.json)"
+            exit 1
+          fi
+          mapfile -t nuspecs < <(git ls-files '*.nuspec')
+          if [ ${#nuspecs[@]} -eq 0 ]; then
+            echo "::error::publish-nuget is set but no .nuspec files are tracked"
+            exit 1
+          fi
+          out="$RUNNER_TEMP/nuget-packages"
+          mkdir -p "$out"
+          for nuspec in "${nuspecs[@]}"; do
+            nuget pack "$nuspec" -Version "$NBGV_NuGetPackageVersion" -Symbols -SymbolPackageFormat snupkg \
+              -Properties "Configuration=Release;commit=$NBGV_GitCommitId" -OutputDirectory "$out"
+          done
+
+      - name: Upload NuGet packages
+        if: inputs.publish-nuget
+        uses: actions/upload-artifact@v7
+        with:
+          name: nuget-packages
+          path: ${{ runner.temp }}/nuget-packages
+          if-no-files-found: error
+
+  package-lock:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check packages.lock.json
+        env:
+          SOLUTION: ${{ inputs.solution }}
+        run: |
+          solution="${SOLUTION//\\//}"
+          if [ ! -f "$solution" ]; then
+            echo "::error::Solution not found: $solution"
+            exit 1
+          fi
+          root="$(dirname "$solution")"
+          mapfile -t projects < <(grep -oE '[^"]+\.nfproj' "$solution" | tr '\\' '/')
+          if [ ${#projects[@]} -eq 0 ]; then
+            echo "::error::No .nfproj projects found in $solution"
+            exit 1
+          fi
+          missing=0
+          for project in "${projects[@]}"; do
+            lock="$(dirname "$root/$project")/packages.lock.json"
+            if [ ! -f "$lock" ]; then
+              echo "::error::Missing $lock (run 'nuget restore -UseLockFile')"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+  packages-updated:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: CCSWE-nanoFramework/actions-nanoframework/.github/actions/setup-nanoframework@master
+
+      - name: Check NuGet packages are up to date
+        shell: bash
+        env:
+          SOLUTION: ${{ inputs.solution }}
+        run: |
+          nuget restore "$SOLUTION" -UseLockFile
+          nuget update "$SOLUTION"
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::NuGet packages aren't on their latest versions; run the Update dependencies workflow"
+            git status --short
+            exit 1
+          fi
+
+  publish:
+    needs: build
+    if: inputs.publish-nuget && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: nuget-packages
+          path: nuget-packages
+
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::error::NUGET_ORG_API_KEY is not set"
+            exit 1
+          fi
+          shopt -s nullglob
+          packages=(nuget-packages/*.nupkg)
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "::error::No packages to publish"
+            exit 1
+          fi
+          for package in "${packages[@]}"; do
+            dotnet nuget push "$package" --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json --skip-duplicate
+          done

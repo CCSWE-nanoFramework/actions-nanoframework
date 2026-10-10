@@ -1,0 +1,48 @@
+name: Build nanoFramework solution
+description: >-
+  Restores (locked) and builds a nanoFramework solution in Release. Stamps
+  Nerdbank.GitVersioning versions when the repo has a version.json.
+
+inputs:
+  solution:
+    description: Path to the solution file.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Nerdbank.GitVersioning
+      if: hashFiles('version.json') != ''
+      uses: dotnet/nbgv@v0.5.2
+      with:
+        setAllVars: true
+
+    - name: Check version
+      if: hashFiles('version.json') != ''
+      shell: bash
+      run: |
+        if [ -z "${NBGV_NuGetPackageVersion:-}" ]; then
+          echo "::error::nbgv produced an empty NuGetPackageVersion"
+          exit 1
+        fi
+
+    - name: Restore
+      shell: bash
+      env:
+        SOLUTION: ${{ inputs.solution }}
+      run: nuget restore "$SOLUTION" -LockedMode
+
+    - name: Build
+      shell: bash
+      env:
+        SOLUTION: ${{ inputs.solution }}
+      run: |
+        args=(-p:Configuration=Release)
+        if [ -n "${NBGV_AssemblyVersion:-}" ]; then
+          args+=(
+            "-p:AssemblyVersion=$NBGV_AssemblyVersion"
+            "-p:FileVersion=$NBGV_AssemblyFileVersion"
+            "-p:InformationalVersion=$NBGV_AssemblyInformationalVersion"
+          )
+        fi
+        msbuild "$SOLUTION" "${args[@]}"
