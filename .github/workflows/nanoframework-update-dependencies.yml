@@ -10,7 +10,9 @@ name: nanoframework-update-dependencies
 #     update-dependencies:
 #       uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/nanoframework-update-dependencies.yml@master
 #       with: { solution: <path to .sln> }
-#       secrets: inherit
+#       secrets:
+#         AUTOMATION_APP_ID: ${{ secrets.AUTOMATION_APP_ID }}
+#         AUTOMATION_APP_KEY: ${{ secrets.AUTOMATION_APP_KEY }}
 
 on:
   workflow_call:

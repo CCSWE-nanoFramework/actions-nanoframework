@@ -27,7 +27,8 @@ jobs:
     with:
       solution: MySolution.sln
       publish-nuget: true
-    secrets: inherit
+    secrets:
+      NUGET_ORG_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }}
 ```
 
 | Job | Runs | Does |
@@ -68,10 +69,12 @@ jobs:
     uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/nanoframework-update-dependencies.yml@master
     with:
       solution: MySolution.sln
-    secrets: inherit
+    secrets:
+      AUTOMATION_APP_ID: ${{ secrets.AUTOMATION_APP_ID }}
+      AUTOMATION_APP_KEY: ${{ secrets.AUTOMATION_APP_KEY }}
 ```
 
-Secrets: `AUTOMATION_APP_ID`, `AUTOMATION_APP_KEY`. These are org secrets in CCSWE-nanoFramework. Repos outside the org need them as repo secrets, stored in `midworld-internal/secrets` at `github/andy-the-messenger-robot.yaml`.
+Secrets: `AUTOMATION_APP_ID`, `AUTOMATION_APP_KEY`. Pass them explicitly: `secrets: inherit` doesn't cross organizations. These are org secrets in CCSWE-nanoFramework. Repos outside the org need them as repo secrets, stored in `midworld-internal/secrets` at `github/andy-the-messenger-robot.yaml`.
 
 ## Composite actions
 
