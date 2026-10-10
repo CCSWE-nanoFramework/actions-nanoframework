@@ -51,15 +51,14 @@ jobs:
 
       - name: Update dependencies
         shell: bash
+        # nanodu's default git user (nfbot) also names the branch
+        # (nfbot/update-dependencies/<guid>), which close-superseded matches.
         env:
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           BRANCH: ${{ github.event.repository.default_branch }}
           DOTNET_NOLOGO: 'true'
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SOLUTION: ${{ inputs.solution }}
         run: |
-          user="${APP_SLUG}[bot]"
-          id="$(gh api "users/${user}" -q .id)"
           tools="$(cygpath -u "$RUNNER_TEMP")/nanodu"
           dotnet tool install nanodu --tool-path "$tools"
           "$tools/nanodu" \
@@ -67,8 +66,6 @@ jobs:
             --stable-packages \
             --solutions-to-check "$SOLUTION" \
             --branch-to-pr "$BRANCH" \
-            --git-hub-user "$user" \
-            --git-hub-email "${id}+${user}@users.noreply.github.com" \
             --git-hub-auth "$GH_TOKEN"
 
   close-superseded:
