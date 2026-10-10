@@ -14,7 +14,7 @@ name: nanoframework-build-publish
 #     pipeline:
 #       uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/nanoframework-build-publish.yml@master
 #       with: { solution: <path to .sln> }
-#       secrets: inherit
+#       secrets: { NUGET_ORG_API_KEY: ${{ secrets.NUGET_ORG_API_KEY }} }
 
 on:
   workflow_call:
