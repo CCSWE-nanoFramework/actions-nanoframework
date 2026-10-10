@@ -3,6 +3,8 @@ updates:
   - package-ecosystem: github-actions
     directories:
       - /
+      - /.github/actions/setup-nanoframework
+      - /.github/actions/build-nanoframework
       - /setup-nanoframework
       - /build-nanoframework
     schedule:
