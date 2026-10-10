@@ -51,4 +51,4 @@ runs:
             "-p:InformationalVersion=$NBGV_AssemblyInformationalVersion"
           )
         fi
-        msbuild "$SOLUTION" "${args[@]}"
+        MSBuild.exe "$SOLUTION" "${args[@]}"
