@@ -1,127 +1,96 @@
 # actions-nanoframework
 
-Reusable GitHub Actions workflows and composite actions for building, testing, and publishing .NET nanoFramework libraries.
-
-## Composite actions
-
-Shared building blocks used by `build-solution.yml` and by other repositories (e.g. `vstest-nanoframework`'s CI). Reference them at `@master`.
-
-### `setup-nanoframework`
-
-Installs the nanoFramework build components, `nanoclr`, MSBuild, and NuGet. This is the single place the `nanoframework/nanobuild` version is pinned. The GitHub token is sourced automatically, so callers do not pass it.
-
-```yaml
-- uses: CCSWE-nanoFramework/actions-nanoframework/setup-nanoframework@master
-```
-
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `usePreview` | no | `false` | Install preview versions of the build components |
-
-### `build-nanoframework`
-
-Restores and builds a nanoFramework solution, optionally applying [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) versions.
-
-```yaml
-- uses: CCSWE-nanoFramework/actions-nanoframework/build-nanoframework@master
-  with:
-    solution: MySolution.sln
-    useGitVersioning: true
-```
-
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `solution` | yes | | Path to the `.sln` file |
-| `configuration` | no | `Release` | Build configuration |
-| `useGitVersioning` | no | `false` | Run Nerdbank.GitVersioning and apply version properties to the build |
-
-When `useGitVersioning` is `true`, the `NBGV_*` variables it exports remain available to later steps in the same job (e.g. the NuGet packaging step in `build-solution.yml`).
-
----
+Reusable GitHub Actions workflows and composite actions for building, testing, and publishing .NET nanoFramework repos.
 
 ## Workflows
 
-### `build-solution.yml`
-
-Builds a .NET nanoFramework solution, optionally runs unit tests, and publishes NuGet packages to nuget.org on `master` branch pushes.
-
-**Usage:**
+### `nanoframework-build-publish.yml`
 
 ```yaml
+name: Build, test, and publish
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
-  build:
-    uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/build-solution.yml@master
+  pipeline:
+    uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/nanoframework-build-publish.yml@master
     with:
       solution: MySolution.sln
+      publish-nuget: true
     secrets: inherit
 ```
 
-**Inputs:**
+| Job | Runs | Does |
+|-----|------|------|
+| `build` | always | Locked restore (when `packages.lock.json` files are tracked), Release build, unit tests via [vstest-nanoframework](https://github.com/CCSWE-nanoFramework/vstest-nanoframework), and with `publish-nuget` packs every tracked `*.nuspec` |
+| `package-lock` | PRs | Every `.nfproj` in the solution has a `packages.lock.json` |
+| `packages-updated` | PRs | `nuget update` leaves the tree unchanged |
+| `publish` | push to the default branch with `publish-nuget` | Pushes the packages to nuget.org |
 
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `solution` | yes | | Path to the `.sln` file |
-| `publishNuGet` | no | `true` | Build and publish NuGet packages |
-| `runUnitTests` | no | `true` | Run unit tests |
+| Input | Default | Description |
+|-------|---------|-------------|
+| `solution` | | Path to the `.sln` file |
+| `publish-nuget` | `false` | Pack and publish NuGet packages |
 
-**Secrets required:**
+Secrets: `NUGET_ORG_API_KEY` (only for `publish`). Versions come from [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning) when the repo has a `version.json`. Publishing requires one.
 
-- `GITHUB_TOKEN` — provided automatically
-- `NUGET_ORG_API_KEY` — required when `publishNuGet` is `true` and running on `master`
+Checks render as `pipeline / build`, `pipeline / package-lock`, `pipeline / packages-updated` and `pipeline / publish`.
 
-**Notes:**
+### `nanoframework-update-dependencies.yml`
 
-- Packages are published to nuget.org only when the build runs on the `master` branch.
-- Version numbers are derived automatically via [Nerdbank.GitVersioning](https://github.com/dotnet/Nerdbank.GitVersioning). A `version.json` file is required in consuming repositories.
-- `.nuspec` files in the `packages` folder are excluded from NuGet packaging.
-
----
-
-### `pull-request-checks.yml`
-
-Validates pull requests by checking that package lock files are consistent and all NuGet packages are up to date.
-
-**Usage:**
+Updates nanoFramework NuGet packages with [nanodu](https://github.com/nanoframework/nanodu) and opens a PR as the `andy-the-messenger-robot` App, so the PR triggers checks. It then closes older update PRs as superseded.
 
 ```yaml
-jobs:
-  pr-checks:
-    uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/pull-request-checks.yml@master
-    with:
-      solution: MySolution.sln
-    secrets: inherit
-```
+name: Update dependencies
 
-**Inputs:**
-
-| Input | Required | Description |
-|-------|----------|-------------|
-| `solution` | yes | Path to the `.sln` file |
-
----
-
-### `update-dependencies.yml`
-
-Checks for updated .NET nanoFramework NuGet dependencies and opens a pull request with any updates found.
-
-**Usage:**
-
-```yaml
 on:
   schedule:
-    - cron: '0 0 * * 1'  # Weekly on Monday
+    - cron: '30 20 * * *'
+  repository_dispatch:
+    types: update-dependencies
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   update-dependencies:
-    uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/update-dependencies.yml@master
+    uses: CCSWE-nanoFramework/actions-nanoframework/.github/workflows/nanoframework-update-dependencies.yml@master
     with:
       solution: MySolution.sln
     secrets: inherit
 ```
 
-**Inputs:**
+Secrets: `AUTOMATION_APP_ID`, `AUTOMATION_APP_KEY`. These are org secrets in CCSWE-nanoFramework. Repos outside the org need them as repo secrets, stored in `midworld-internal/secrets` at `github/andy-the-messenger-robot.yaml`.
 
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `solution` | yes | | Path to the `.sln` file |
-| `branchToPr` | no | `master` | Target branch for the dependency update PR |
+## Composite actions
+
+Used by the workflows and by `vstest-nanoframework`'s CI. Reference them at `@master`.
+
+### `setup-nanoframework`
+
+Installs the nanoFramework build components, MSBuild (x64) and NuGet CLI 7.x.
+
+```yaml
+- uses: CCSWE-nanoFramework/actions-nanoframework/.github/actions/setup-nanoframework@master
+```
+
+### `build-nanoframework`
+
+Restores and builds a solution in Release. The restore is locked when `packages.lock.json` files are tracked. When a `version.json` exists, it runs Nerdbank.GitVersioning and stamps the versions; the `NBGV_*` variables stay available to later steps.
+
+```yaml
+- uses: CCSWE-nanoFramework/actions-nanoframework/.github/actions/build-nanoframework@master
+  with:
+    solution: MySolution.sln
+```
