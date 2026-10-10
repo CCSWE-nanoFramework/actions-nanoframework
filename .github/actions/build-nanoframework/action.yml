@@ -1,6 +1,6 @@
 name: Build nanoFramework solution
 description: >-
-  Restores (locked) and builds a nanoFramework solution in Release. Stamps
+  Restores (locked when packages.lock.json files are tracked) and builds a nanoFramework solution in Release. Stamps
   Nerdbank.GitVersioning versions when the repo has a version.json.
 
 inputs:
@@ -26,11 +26,17 @@ runs:
           exit 1
         fi
 
+    # Locked when the repo tracks lock files, so CI restores exactly what they record.
     - name: Restore
       shell: bash
       env:
         SOLUTION: ${{ inputs.solution }}
-      run: nuget restore "$SOLUTION" -LockedMode
+      run: |
+        args=()
+        if [ -n "$(git ls-files '*packages.lock.json')" ]; then
+          args+=(-LockedMode)
+        fi
+        nuget restore "$SOLUTION" "${args[@]}"
 
     - name: Build
       shell: bash
