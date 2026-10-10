@@ -1,0 +1,20 @@
+name: Setup nanoFramework
+description: Installs the nanoFramework build components, MSBuild (x64) and the NuGet CLI.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup nanoFramework build components
+      uses: nanoframework/nanobuild@v1
+      with:
+        gitHubAuth: ${{ github.token }}
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v3
+      with:
+        msbuild-architecture: x64
+
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v4
+      with:
+        nuget-version: '7.x'
